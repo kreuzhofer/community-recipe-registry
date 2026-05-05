@@ -1,0 +1,50 @@
+recipe_version: "2"
+model: Qwen/Qwen3.5-27B-FP8
+runtime: vllm
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly@sha256:7758869bb489d93a4658d009554f598f18bbef0d07bbc38df49bf586a1874279
+
+metadata:
+  description: |
+    Qwen3.5-27B FP8 with DFlash speculative decoding (drafter z-lab/Qwen3.5-27B-DFlash, num_speculative_tokens=15) on DGX Spark GB10.
+  maintainer: "@banana_baeee"
+  model_params: 27B
+  model_dtype: fp8
+  kv_dtype: bfloat16
+  quantization: compressed-tensors
+  quant_bits: 8
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 1
+  pipeline_parallel: 1
+  gpu_memory_utilization: 0.94
+  max_model_len: 131072
+  max_num_batched_tokens: 16384
+  max_num_seqs: 10
+  speculative_config: '{"method":"dflash","num_speculative_tokens":15,"model":"z-lab/Qwen3.5-27B-DFlash"}'
+
+env:
+  TORCH_CUDA_ARCH_LIST: "12.1a"
+  FLASHINFER_CUDA_ARCH_LIST: "12.1a"
+  VLLM_USE_FLASHINFER_MOE_FP4: "0"
+  VLLM_ENABLE_V1_MULTIPROCESSING: "0"
+  VLLM_SKIP_SPEC_STARTUP_DUMMY_RUN: "1"
+  VLLM_FORCE_DRAFT_LOAD_FORMAT: "safetensors"
+  PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+
+command: |
+  vllm serve {model} \
+    --host {host} --port {port} \
+    --tensor-parallel-size {tensor_parallel} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --max-num-seqs {max_num_seqs} \
+    --enforce-eager \
+    --trust-remote-code \
+    --load-format fastsafetensors \
+    --attention-backend flash_attn \
+    --enable-prefix-caching \
+    --speculative-config '{speculative_config}' \
+    --seed 0
