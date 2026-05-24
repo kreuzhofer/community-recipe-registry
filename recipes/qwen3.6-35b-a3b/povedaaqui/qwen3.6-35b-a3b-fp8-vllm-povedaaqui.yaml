@@ -1,0 +1,62 @@
+recipe_version: "2"
+model: Qwen/Qwen3.6-35B-A3B-FP8
+runtime: vllm
+container: vllm/vllm-openai:cu130-nightly  # or use ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest if you want to use the latest @eugr spark-vllm-docker image! (probably a better choice, but then that'd be me changing the intent of the image...)
+
+metadata:
+  description: Qwen3.6-35B-A3B-FP8 — aggressive throughput config (FP8 KV, FlashInfer, MTP) submitted by @povedaaqui
+
+mods:
+  - mods/fix-qwen3.6-chat-template  # switched to using @eugr spark-vllm-docker mod (doesn't require using spark-vllm docker image!)
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 1
+  served_model_name: qwen36
+  gpu_memory_utilization: 0.85
+  dtype: auto
+  kv_cache_dtype: fp8
+  max_model_len: 262144
+  max_num_batched_tokens: 32768
+  max_num_seqs: 8
+  attention_backend: flashinfer
+  load_format: instanttensor
+  tool_call_parser: qwen3_coder
+  reasoning_parser: qwen3
+  performance_mode: throughput
+  speculative_config: '{"method":"mtp","num_speculative_tokens":3}'  # changed to 'mtp', qwen3_next_mtp is deprecated
+  default_chat_template_kwargs: '{"preserve_thinking":true}'
+  override_generation_config: '{"temperature":0.6,"top_p":0.95,"top_k":20,"min_p":0.0,"presence_penalty":0.0,"repetition_penalty":1.0}'
+
+env:
+  FLASHINFER_DISABLE_VERSION_CHECK: "1"
+  VLLM_HTTP_TIMEOUT_KEEP_ALIVE: "600"
+
+executor_config:
+  restart_policy: unless-stopped
+
+command: |
+  vllm serve {model} \
+      --served-model-name {served_model_name} \
+      --host {host} \
+      --port {port} \
+      --tensor-parallel-size {tensor_parallel} \
+      --gpu-memory-utilization {gpu_memory_utilization} \
+      --dtype {dtype} \
+      --kv-cache-dtype {kv_cache_dtype} \
+      --max-model-len {max_model_len} \
+      --max-num-batched-tokens {max_num_batched_tokens} \
+      --max-num-seqs {max_num_seqs} \
+      --attention-backend {attention_backend} \
+      --enable-prefix-caching \
+      --enable-chunked-prefill \
+      --enable-auto-tool-choice \
+      --tool-call-parser {tool_call_parser} \
+      --reasoning-parser {reasoning_parser} \
+      --performance-mode {performance_mode} \
+      --load-format {load_format} \
+      --chat-template fixed_chat_template.jinja \
+      --default-chat-template-kwargs '{default_chat_template_kwargs}' \
+      --override-generation-config '{override_generation_config}' \
+      --speculative-config '{speculative_config}'
