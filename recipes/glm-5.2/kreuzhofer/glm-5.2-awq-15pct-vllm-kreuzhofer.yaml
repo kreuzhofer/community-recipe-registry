@@ -7,7 +7,7 @@ defaults:
   port: 8000
   host: 0.0.0.0
   tensor_parallel: 4
-  gpu_memory_utilization: 0.93
+  gpu_memory_utilization: 0.88
   max_model_len: 262144
   served_model_name: glm-5.2
 env:
