@@ -31,6 +31,9 @@ env:
   # NCCL 2.30.4 staged on shared storage (mounted at /cache/huggingface) — fixes the
   # multi-node GB10 shm-broadcast warmup wedge present in the container's bundled NCCL 2.28.
   LD_PRELOAD: /cache/huggingface/nccl-2.30.4/libnccl.so.2
+  # Slow eager multi-node GB10 steps exceed vLLM's default RPC timeout under load,
+  # killing EngineCore (RPC call to sample_tokens timed out). Forum recipe sets 1800s.
+  VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: "1800"
   NCCL_SOCKET_IFNAME: enP2p1s0f0np0
   GLOO_SOCKET_IFNAME: enP2p1s0f0np0
   NCCL_IB_DISABLE: "0"
@@ -44,4 +47,5 @@ command: |
     -tp {tensor_parallel} --distributed-executor-backend ray \
     --max-model-len {max_model_len} \
     --gpu-memory-utilization {gpu_memory_utilization} \
+    --max-num-seqs 1 \
     --enforce-eager
