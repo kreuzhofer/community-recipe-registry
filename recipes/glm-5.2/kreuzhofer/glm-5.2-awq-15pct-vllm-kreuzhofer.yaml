@@ -1,51 +1,28 @@
 recipe_version: "2"
 model: CosmicRaisins/GLM-5.2-AWQ-INT4-15pct
 runtime: vllm
-container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly-tf5:latest
-
-metadata:
-  description: |
-    GLM-5.2 (GlmMoeDsa / DeepSeek-Sparse-Attention MoE), 15%-expert-pruned compressed-tensors
-    INT4, on a 4x DGX Spark GB10 (sm_121) cluster, TP=4. Runs on the eugr-nightly vLLM
-    (FlashInfer sparse-MLA SM120 + DeepGEMM E8M0 + INT4/NVFP4 kernels). LD_PRELOADs NCCL 2.30.4
-    to clear the shm-broadcast warmup wedge on multi-node GB10. Validated: +7.48 GiB KV cache,
-    engine warmup ~35s. Ported from the NVIDIA DGX Spark forum GLM-5.2 recipes.
-  maintainer: "@kreuzhofer"
-  model_params: 744B-A40B (15% pruned)
-  model_dtype: int4
-  kv_dtype: fp8
-  quantization: compressed-tensors-int4
-  source: https://forums.developer.nvidia.com/t/glm-5-2-on-a-4x-gb10-cluster-22-tok-s-decode-256k-ctx-recipe/374125
-
+container: vllm-node-tf5-glm52-b12x:probe
 cluster_only: true
-
 defaults:
   port: 8000
   host: 0.0.0.0
   tensor_parallel: 4
-  gpu_memory_utilization: 0.85
-  max_model_len: 8192
+  gpu_memory_utilization: 0.93
+  max_model_len: 262144
   served_model_name: glm-5.2
-
 env:
-  # NCCL 2.30.4 staged on shared storage (mounted at /cache/huggingface) — fixes the
-  # multi-node GB10 shm-broadcast warmup wedge present in the container's bundled NCCL 2.28.
   LD_PRELOAD: /cache/huggingface/nccl-2.30.4/libnccl.so.2
-  # Slow eager multi-node GB10 steps exceed vLLM's default RPC timeout under load,
-  # killing EngineCore (RPC call to sample_tokens timed out). Forum recipe sets 1800s.
   VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: "1800"
+  VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
+  VLLM_SPARSE_INDEXER_MAX_LOGITS_MB: "256"
+  GLM52_BIND_HOST_TRITON: "1"
+  GLM52_MQA_LOGITS_TRITON: "1"
+  GLM52_PAGED_MQA_TRITON: "1"
+  GLM52_PAGED_MQA_TOPK_CHUNK_SIZE: "8192"
+  GLM52_B12X_MLA: "1"
   NCCL_SOCKET_IFNAME: enP2p1s0f0np0
   GLOO_SOCKET_IFNAME: enP2p1s0f0np0
   NCCL_IB_DISABLE: "0"
   PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
-
 command: |
-  vllm serve {model} \
-    --served-model-name {served_model_name} \
-    --host {host} --port {port} \
-    --trust-remote-code \
-    -tp {tensor_parallel} --distributed-executor-backend ray \
-    --max-model-len {max_model_len} \
-    --gpu-memory-utilization {gpu_memory_utilization} \
-    --max-num-seqs 1 \
-    --enforce-eager
+  vllm serve {model} --served-model-name {served_model_name} --host {host} --port {port} --trust-remote-code --reasoning-parser glm45 --tool-call-parser glm47 --enable-auto-tool-choice -tp {tensor_parallel} --pipeline-parallel-size 1 --distributed-executor-backend ray --max-model-len {max_model_len} --max-num-seqs 1 --max-num-batched-tokens 4096 --gpu-memory-utilization {gpu_memory_utilization} --kv-cache-dtype fp8_ds_mla --compilation-config '{"cudagraph_mode":"FULL"}'
